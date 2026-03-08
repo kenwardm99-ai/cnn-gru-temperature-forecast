@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 import streamlit as st
-import matplotlib.pyplot as plt  # Importing for the temperature chart
+import matplotlib.pyplot as plt
 
 # Set page configuration
 st.set_page_config(page_title="Tomorrow Temperature Predictor", layout="centered")
@@ -24,7 +24,10 @@ ARTIFACT_DIR = "artifacts"
 # -----------------------------
 # Load trained artifacts
 # -----------------------------
-model = tf.keras.models.load_model(os.path.join(ARTIFACT_DIR, "cnn_gru_temp_model.keras"))
+model = tf.keras.models.load_model(
+    os.path.join(ARTIFACT_DIR, "cnn_gru_temp_model.keras"),
+    compile=False
+)
 scaler_X = joblib.load(os.path.join(ARTIFACT_DIR, "scaler_X.pkl"))
 scaler_y = joblib.load(os.path.join(ARTIFACT_DIR, "scaler_y.pkl"))
 feature_cols = joblib.load(os.path.join(ARTIFACT_DIR, "feature_cols.pkl"))
@@ -179,12 +182,11 @@ if predict:
         temps = [min_temp, max_temp, pred[0][0]]
         labels = ["MinTemp Today", "MaxTemp Today", "Predicted MaxTemp Tomorrow"]
 
-        plt.figure()
-        plt.plot(labels, temps, marker="o")
-        plt.title("Temperature Trend")
-        plt.ylabel("Temperature °C")
-
-        st.pyplot(plt)
+        fig, ax = plt.subplots()
+        ax.plot(labels, temps, marker="o")
+        ax.set_title("Temperature Trend")
+        ax.set_ylabel("Temperature °C")
+        st.pyplot(fig)
 
         # Update rolling history buffer back to 29 rows
         combined.tail(WINDOW - 1)[required_raw_cols].to_csv(history_path, index=False)
@@ -198,3 +200,4 @@ if predict:
 
     except Exception as e:
         st.error(f"An error occurred: {e}")
+      
