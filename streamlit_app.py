@@ -7,23 +7,27 @@ import tensorflow as tf
 import streamlit as st
 import matplotlib.pyplot as plt
 
-# Set page configuration
-st.set_page_config(page_title="Tomorrow Temperature Predictor", layout="centered")
+# ---------------------------------------------------
+# Page configuration
+# ---------------------------------------------------
+st.set_page_config(
+    page_title="Tomorrow Temperature Predictor",
+    layout="centered"
+)
 
-# Add header and subheader
+# ---------------------------------------------------
+# Header
+# ---------------------------------------------------
 st.header("University of Zimbabwe")
 st.subheader("Department of Analytics and Informatics")
-
-# Project details
-st.write("Project:")
-st.write("**A Hybrid CNN-GRU Model for Short-Term Temperature Forecasting**")
-st.write("Author: Kenward Marambahwenda")
+st.write("**Project:** A Hybrid CNN-GRU Model for Short-Term Temperature Forecasting")
+st.write("**Author:** Kenward Marambahwenda")
 
 ARTIFACT_DIR = "artifacts"
 
-# -----------------------------
+# ---------------------------------------------------
 # Load trained artifacts
-# -----------------------------
+# ---------------------------------------------------
 model = tf.keras.models.load_model(
     os.path.join(ARTIFACT_DIR, "cnn_gru_temp_model.keras"),
     compile=False
@@ -37,9 +41,19 @@ with open(os.path.join(ARTIFACT_DIR, "config.json"), "r") as f:
 
 WINDOW = config["window"]
 
-# -----------------------------
+# ---------------------------------------------------
+# Sidebar: model information
+# ---------------------------------------------------
+st.sidebar.title("Model Information")
+st.sidebar.write("**Model Type:** Hybrid CNN-GRU")
+st.sidebar.write(f"**Input Window:** {WINDOW} days")
+st.sidebar.write("**Prediction Target:** Tomorrow's temperature")
+st.sidebar.write("**Features Used:**")
+st.sidebar.write(", ".join(feature_cols))
+
+# ---------------------------------------------------
 # Feature engineering function
-# -----------------------------
+# ---------------------------------------------------
 def add_engineered_features(df):
     df = df.copy()
 
@@ -80,27 +94,37 @@ def add_engineered_features(df):
 
     return df
 
-# -----------------------------
-# App UI
-# -----------------------------
+# ---------------------------------------------------
+# Main app title and description
+# ---------------------------------------------------
 st.title("Hybrid CNN-GRU Temperature Forecast")
-st.write("Enter today's weather values")
+st.write("Enter today's weather conditions to predict tomorrow's temperature.")
 
-min_temp = st.number_input("MinTemp", value=15.0)
-max_temp = st.number_input("MaxTemp", value=28.0)
-humidity_3pm = st.number_input("Humidity3pm", value=45.0)
+# ---------------------------------------------------
+# Dashboard-style input layout
+# ---------------------------------------------------
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    min_temp = st.number_input("MinTemp (°C)", value=15.0)
+
+with col2:
+    max_temp = st.number_input("MaxTemp (°C)", value=28.0)
+
+with col3:
+    humidity_3pm = st.number_input("Humidity3pm (%)", value=45.0)
 
 predict = st.button("Predict Tomorrow")
 
-# -----------------------------
+# ---------------------------------------------------
 # Prediction logic
-# -----------------------------
+# ---------------------------------------------------
 if predict:
     try:
         history_path = os.path.join(ARTIFACT_DIR, "recent_raw_history.csv")
         history = pd.read_csv(history_path)
 
-        # Make sure required raw columns exist
+        # Required raw columns
         required_raw_cols = [
             "Date",
             "MinTemp",
@@ -126,31 +150,31 @@ if predict:
             st.error(f"Missing required columns in recent_raw_history.csv: {missing_raw}")
             st.stop()
 
-        # Ensure enough rows BEFORE adding today's row
+        # Need 29 rows before adding today's row
         if len(history) < WINDOW - 1:
             st.error(f"recent_raw_history.csv must have at least {WINDOW - 1} rows.")
             st.stop()
 
         history["Date"] = pd.to_datetime(history["Date"], errors="coerce")
 
-        # Copy last row as template
+        # Use latest row as template
         latest = history.tail(1).copy()
 
-        # Replace only the user-entered fields
+        # Replace only user-entered fields
         latest["MinTemp"] = min_temp
         latest["MaxTemp"] = max_temp
         latest["Humidity3pm"] = humidity_3pm
 
-        # Set the new row date to next day
+        # Advance date by one day
         latest["Date"] = latest["Date"] + pd.Timedelta(days=1)
 
-        # Combine old history + new user row
+        # Build full 30-day sequence
         combined = pd.concat([history, latest], ignore_index=True)
 
-        # Recreate engineered features used during training
+        # Recreate engineered features
         combined = add_engineered_features(combined)
 
-        # Check if all expected feature columns now exist
+        # Check expected features
         missing_features = [col for col in feature_cols if col not in combined.columns]
         if missing_features:
             st.error(f"These expected feature columns are still missing: {missing_features}")
@@ -158,10 +182,10 @@ if predict:
             st.write("Available columns:", combined.columns.tolist())
             st.stop()
 
-        # Select only training features
+        # Select training features
         features = combined[feature_cols]
 
-        # Take the last WINDOW rows
+        # Take last WINDOW rows
         last_window = features.tail(WINDOW)
 
         if len(last_window) != WINDOW:
@@ -176,28 +200,77 @@ if predict:
         pred_scaled = model.predict(X_input, verbose=0)
         pred = scaler_y.inverse_transform(pred_scaled)
 
-        st.success(f"Predicted Tomorrow MaxTemp: {pred[0][0]:.2f} °C")
+        # Handle single-output or two-output model
+        pred_max = pred[0][0]
+        pred_min = pred[0][1] if pred.shape[1] > 1 else None
 
-        # Optional: Add a temperature chart
-        temps = [min_temp, max_temp, pred[0][0]]
-        labels = ["MinTemp Today", "MaxTemp Today", "Predicted MaxTemp Tomorrow"]
+        # ---------------------------------------------------
+        # Forecast result section
+        # ---------------------------------------------------
+        st.subheader("Forecast Result")
+
+        if pred_min is not None:
+            r1, r2, r3, r4 = st.columns(4)
+
+            with r1:
+                st.metric("Today's MinTemp", f"{min_temp:.2f} °C")
+            with r2:
+                st.metric("Today's MaxTemp", f"{max_temp:.2f} °C")
+            with r3:
+                st.metric("Tomorrow MinTemp", f"{pred_min:.2f} °C")
+            with r4:
+                st.metric("Tomorrow MaxTemp", f"{pred_max:.2f} °C")
+        else:
+            r1, r2, r3 = st.columns(3)
+
+            with r1:
+                st.metric("Today's MinTemp", f"{min_temp:.2f} °C")
+            with r2:
+                st.metric("Today's MaxTemp", f"{max_temp:.2f} °C")
+            with r3:
+                st.metric("Tomorrow MaxTemp", f"{pred_max:.2f} °C")
+
+        # ---------------------------------------------------
+        # Temperature chart
+        # ---------------------------------------------------
+        st.subheader("Temperature Trend")
+
+        if pred_min is not None:
+            temps = [min_temp, max_temp, pred_min, pred_max]
+            labels = [
+                "MinTemp Today",
+                "MaxTemp Today",
+                "Predicted MinTemp Tomorrow",
+                "Predicted MaxTemp Tomorrow"
+            ]
+        else:
+            temps = [min_temp, max_temp, pred_max]
+            labels = [
+                "MinTemp Today",
+                "MaxTemp Today",
+                "Predicted MaxTemp Tomorrow"
+            ]
 
         fig, ax = plt.subplots()
         ax.plot(labels, temps, marker="o")
         ax.set_title("Temperature Trend")
-        ax.set_ylabel("Temperature °C")
+        ax.set_ylabel("Temperature (°C)")
+        plt.xticks(rotation=15)
         st.pyplot(fig)
 
         # Update rolling history buffer back to 29 rows
         combined.tail(WINDOW - 1)[required_raw_cols].to_csv(history_path, index=False)
 
+        # ---------------------------------------------------
+        # Debug section
+        # ---------------------------------------------------
         with st.expander("Debug info"):
             st.write("Window size:", WINDOW)
             st.write("Expected feature columns:", feature_cols)
             st.write("Last window shape:", last_window.shape)
+            st.write("Prediction array:", pred)
             st.write("Latest prediction input row:")
             st.dataframe(latest)
 
     except Exception as e:
         st.error(f"An error occurred: {e}")
-      
