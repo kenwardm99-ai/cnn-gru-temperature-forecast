@@ -15,6 +15,30 @@ st.set_page_config(
     layout="centered"
 )
 
+ARTIFACT_DIR = "artifacts"
+
+# ---------------------------------------------------
+# Load trained artifacts safely
+# ---------------------------------------------------
+@st.cache_resource
+def load_artifacts():
+    model = tf.keras.models.load_model(
+        os.path.join(ARTIFACT_DIR, "cnn_gru_temp_model.keras"),
+        compile=False
+    )
+    scaler_X = joblib.load(os.path.join(ARTIFACT_DIR, "scaler_X.pkl"))
+    scaler_y = joblib.load(os.path.join(ARTIFACT_DIR, "scaler_y.pkl"))
+    feature_cols = joblib.load(os.path.join(ARTIFACT_DIR, "feature_cols.pkl"))
+
+    with open(os.path.join(ARTIFACT_DIR, "config.json"), "r") as f:
+        config = json.load(f)
+
+    return model, scaler_X, scaler_y, feature_cols, config
+
+
+model, scaler_X, scaler_y, feature_cols, config = load_artifacts()
+WINDOW = config["window"]
+
 # ---------------------------------------------------
 # Header
 # ---------------------------------------------------
@@ -23,24 +47,6 @@ st.subheader("Department of Analytics and Informatics")
 st.write("**Project:** A Hybrid CNN-GRU Model for Short-Term Temperature Forecasting")
 st.write("**Author:** Kenward Marambahwenda")
 
-ARTIFACT_DIR = "artifacts"
-
-# ---------------------------------------------------
-# Load trained artifacts
-# ---------------------------------------------------
-model = tf.keras.models.load_model(
-    os.path.join(ARTIFACT_DIR, "cnn_gru_temp_model.keras"),
-    compile=False
-)
-scaler_X = joblib.load(os.path.join(ARTIFACT_DIR, "scaler_X.pkl"))
-scaler_y = joblib.load(os.path.join(ARTIFACT_DIR, "scaler_y.pkl"))
-feature_cols = joblib.load(os.path.join(ARTIFACT_DIR, "feature_cols.pkl"))
-
-with open(os.path.join(ARTIFACT_DIR, "config.json"), "r") as f:
-    config = json.load(f)
-
-WINDOW = config["window"]
-
 # ---------------------------------------------------
 # Sidebar: model information
 # ---------------------------------------------------
@@ -48,8 +54,10 @@ st.sidebar.title("Model Information")
 st.sidebar.write("**Model Type:** Hybrid CNN-GRU")
 st.sidebar.write(f"**Input Window:** {WINDOW} days")
 st.sidebar.write("**Prediction Target:** Tomorrow's temperature")
-st.sidebar.write("**Features Used:**")
-st.sidebar.write(", ".join(feature_cols))
+st.sidebar.write("**Features Used:** 25 engineered meteorological features")
+
+with st.sidebar.expander("View full feature list"):
+    st.write(", ".join(feature_cols))
 
 # ---------------------------------------------------
 # Feature engineering function
@@ -274,3 +282,9 @@ if predict:
 
     except Exception as e:
         st.error(f"An error occurred: {e}")
+
+# ---------------------------------------------------
+# Footer
+# ---------------------------------------------------
+st.markdown("---")
+st.caption("Developed by Kenward Marambahwenda | University of Zimbabwe | Department of Analytics and Informatics")
