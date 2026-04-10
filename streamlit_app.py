@@ -1,3 +1,7 @@
+import os
+import json
+import joblib
+import numpy as np
 import pandas as pd
 import tensorflow as tf
 import streamlit as st
@@ -7,7 +11,7 @@ import matplotlib.pyplot as plt
 # Page configuration
 # ---------------------------------------------------
 st.set_page_config(
-    page_title="Today Temperature Predictor",
+    page_title="Tomorrow Temperature Predictor",
     layout="centered"
 )
 
@@ -33,7 +37,7 @@ def load_artifacts():
 
 
 model, scaler_X, scaler_y, feature_cols, config = load_artifacts()
-WINDOW = config["window"]  # this should now be 7 in config.json
+WINDOW = config["window"]
 
 # ---------------------------------------------------
 # Header
@@ -49,7 +53,7 @@ st.write("**Author:** Kenward Marambahwenda")
 st.sidebar.title("Model Information")
 st.sidebar.write("**Model Type:** Hybrid CNN-GRU")
 st.sidebar.write(f"**Input Window:** {WINDOW} days")
-st.sidebar.write("**Prediction Target:** Today's temperature using yesterday's weather values")
+st.sidebar.write("**Prediction Target:** Tomorrow's temperature")
 st.sidebar.write("**Features Used:** 25 engineered meteorological features")
 
 with st.sidebar.expander("View full feature list"):
@@ -102,7 +106,7 @@ def add_engineered_features(df):
 # Main app title and description
 # ---------------------------------------------------
 st.title("Hybrid CNN-GRU Temperature Forecast")
-st.write("Enter yesterday's weather conditions to predict today's temperature.")
+st.write("Enter today's weather conditions to predict tomorrow's temperature.")
 
 # ---------------------------------------------------
 # Dashboard-style input layout
@@ -110,15 +114,15 @@ st.write("Enter yesterday's weather conditions to predict today's temperature.")
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    min_temp = st.number_input("Yesterday MinTemp (°C)", value=15.0)
+    min_temp = st.number_input("MinTemp (°C)", value=15.0)
 
 with col2:
-    max_temp = st.number_input("Yesterday MaxTemp (°C)", value=28.0)
+    max_temp = st.number_input("MaxTemp (°C)", value=28.0)
 
 with col3:
-    humidity_3pm = st.number_input("Yesterday Humidity3pm (%)", value=45.0)
+    humidity_3pm = st.number_input("Humidity3pm (%)", value=45.0)
 
-predict = st.button("Predict Today")
+predict = st.button("Predict Tomorrow")
 
 # ---------------------------------------------------
 # Prediction logic
@@ -154,7 +158,7 @@ if predict:
             st.error(f"Missing required columns in recent_raw_history.csv: {missing_raw}")
             st.stop()
 
-        # Need WINDOW - 1 rows before adding yesterday's row
+        # Need 29 rows before adding today's row
         if len(history) < WINDOW - 1:
             st.error(f"recent_raw_history.csv must have at least {WINDOW - 1} rows.")
             st.stop()
@@ -164,15 +168,15 @@ if predict:
         # Use latest row as template
         latest = history.tail(1).copy()
 
-        # Replace only user-entered fields using yesterday's values
+        # Replace only user-entered fields
         latest["MinTemp"] = min_temp
         latest["MaxTemp"] = max_temp
         latest["Humidity3pm"] = humidity_3pm
 
-        # Advance date by one day so that yesterday's input becomes today's forecast context
+        # Advance date by one day
         latest["Date"] = latest["Date"] + pd.Timedelta(days=1)
 
-        # Build full 7-day sequence
+        # Build full 30-day sequence
         combined = pd.concat([history, latest], ignore_index=True)
 
         # Recreate engineered features
@@ -217,22 +221,22 @@ if predict:
             r1, r2, r3, r4 = st.columns(4)
 
             with r1:
-                st.metric("Yesterday MinTemp", f"{min_temp:.2f} °C")
+                st.metric("Today's MinTemp", f"{min_temp:.2f} °C")
             with r2:
-                st.metric("Yesterday MaxTemp", f"{max_temp:.2f} °C")
+                st.metric("Today's MaxTemp", f"{max_temp:.2f} °C")
             with r3:
-                st.metric("Predicted Today MinTemp", f"{pred_min:.2f} °C")
+                st.metric("Tomorrow MinTemp", f"{pred_min:.2f} °C")
             with r4:
-                st.metric("Predicted Today MaxTemp", f"{pred_max:.2f} °C")
+                st.metric("Tomorrow MaxTemp", f"{pred_max:.2f} °C")
         else:
             r1, r2, r3 = st.columns(3)
 
             with r1:
-                st.metric("Yesterday MinTemp", f"{min_temp:.2f} °C")
+                st.metric("Today's MinTemp", f"{min_temp:.2f} °C")
             with r2:
-                st.metric("Yesterday MaxTemp", f"{max_temp:.2f} °C")
+                st.metric("Today's MaxTemp", f"{max_temp:.2f} °C")
             with r3:
-                st.metric("Predicted Today Temperature", f"{pred_max:.2f} °C")
+                st.metric("Tomorrow MaxTemp", f"{pred_max:.2f} °C")
 
         # ---------------------------------------------------
         # Temperature chart
@@ -242,17 +246,17 @@ if predict:
         if pred_min is not None:
             temps = [min_temp, max_temp, pred_min, pred_max]
             labels = [
-                "Yesterday MinTemp",
-                "Yesterday MaxTemp",
-                "Predicted Today MinTemp",
-                "Predicted Today MaxTemp"
+                "MinTemp Today",
+                "MaxTemp Today",
+                "Predicted MinTemp Tomorrow",
+                "Predicted MaxTemp Tomorrow"
             ]
         else:
             temps = [min_temp, max_temp, pred_max]
             labels = [
-                "Yesterday MinTemp",
-                "Yesterday MaxTemp",
-                "Predicted Today Temperature"
+                "MinTemp Today",
+                "MaxTemp Today",
+                "Predicted MaxTemp Tomorrow"
             ]
 
         fig, ax = plt.subplots()
@@ -262,7 +266,7 @@ if predict:
         plt.xticks(rotation=15)
         st.pyplot(fig)
 
-        # Update rolling history buffer back to WINDOW - 1 rows
+        # Update rolling history buffer back to 29 rows
         combined.tail(WINDOW - 1)[required_raw_cols].to_csv(history_path, index=False)
 
         # ---------------------------------------------------
