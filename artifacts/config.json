@@ -1,5 +1,5 @@
 {
-  "window": 30,
+  "window": 7,
   "targets": [
     "NextMaxTemp",
     "NextMinTemp"
